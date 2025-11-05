@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary   # Postgres driver
+pydantic-settings # For loading .env
+python-multipart  # For file uploads
+pypdf             # For reading resume text
+pydantic[email]
+langchain
+langchain-google-genai
+pgvector
+numpy
+langchain-core
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+langgraph
