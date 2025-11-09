@@ -43,7 +43,7 @@ graph TD
     subgraph "Step 6: Loop Closed"
         E --> F[Candidate: Receives Email & Sees 'Scheduled' Status]
     end
-
+'''
 
 ## Tech Stack
 
@@ -65,7 +65,7 @@ graph TD
 ```bash
 git clone [https://github.com/your-username/your-repo-name.git](https://github.com/your-username/your-repo-name.git)
 cd your-repo-name
-```
+
 
 ### 2\. Set Up Virtual Environment
 
