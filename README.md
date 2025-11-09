@@ -1,218 +1,168 @@
-🤖 Autonomous AI Recruitment Manager
+# 🚀 Autonomous AI Recruitment Manager
 
-An end-to-end AI-driven recruitment automation system — not just a chatbot, but a fully autonomous agentic platform with perception, reasoning, and action capabilities.
-This system autonomously handles the entire recruitment pipeline — from candidate application to resume scoring, interview scheduling, and real-world actions like sending emails and booking meetings.
+[![FastAPI](https://img.shields.io/badge/FastAPI-000000?style=flat&logo=fastapi)](https://fastapi.tiangolo.com) [![LangChain](https://img.shields.io/badge/LangChain-000000?style=flat)](https://langchain.com) [![Gemini](https://img.shields.io/badge/Gemini-000000?style=flat)](https://ai.google/) [![Postgres](https://img.shields.io/badge/Postgres-336791?style=flat&logo=postgresql)]
 
-🧠 Overview
+> **Autonomous pipeline** that scores resumes semantically, proposes interviews, flows through HR approval, then autonomously books Google Calendar events and emails candidates. Human-in-the-loop for safe, auditable automation.
 
-The Autonomous AI Recruitment Manager streamlines hiring by combining AI intelligence with automation tools.
-It perceives events (“eyes”), takes real-world actions (“hands”), and communicates (“voice”), while keeping humans in control through a Human-in-the-Loop (HITL) approval system.
+---
 
-⚙️ Core Features
-🧩 API & Backend
+## TL;DR
 
-Built on FastAPI — a scalable, async-ready RESTful backend.
+1. Clone repo  
+2. Create `.env` from `.env.example` and populate keys (DATABASE_URL, GOOGLE_API_KEY, Google OAuth `credentials.json`)  
+3. `pip install -r requirements.txt`  
+4. `python get_token.py` → authorize once (creates `token.json`)  
+5. `uvicorn hr_agent.app.main:app --reload` → open `http://127.0.0.1:8000/docs`  
 
-Manages jobs, candidates, and interviews with clean API endpoints.
+---
 
-🧠 Semantic Resume Scoring
+## What this does (short)
 
-Parses and scores PDF resumes using Gemini embeddings and pgvector cosine similarity.
+- Ingests PDF resumes and scores them against job descriptions using **Gemini** embeddings + **pgvector**.
+- Triggers a LangGraph/LangChain agent for high-fit candidates.
+- Agent proposes an interview (creates `Pending` interview in DB).
+- HR approves via `/pending-interviews/{id}/approve` — only then agent books GCal & sends Gmail.
+- Candidate-facing endpoint `/my-applications/{email}` shows status + meet link.
+- HR feedback endpoint to capture labeling data for future improvements.
 
-Matches candidates to job descriptions semantically, not just by keywords.
+---
 
-🤖 Autonomous Agent
+## Quick Features
 
-Powered by LangGraph + LangChain for intelligent decision-making.
+- Semantic resume scoring (Gemini + pgvector)
+- LangGraph agent orchestration
+- Google Calendar & Gmail integration (real bookings & invites)
+- Human-in-the-loop safety gate
+- Candidate self-service endpoint
+- Feedback loop for continuous learning
 
-Automatically proposes interviews for top-matching candidates.
+---
 
-🧰 Agentic Tools
-Capability	Description
-👁️ Eyes	Searches real Google Calendar for open slots
-✋ Hands	Books Google Calendar meetings with Meet links
-🗣️ Voice	Sends personalized, formatted emails via Gmail
-👩‍💼 Human-in-the-Loop (HITL)
+## Architecture (at-a-glance)
 
-The agent only proposes actions — HR must explicitly approve them.
+```
+[React UI] -> [FastAPI] -> [Resume Parser + Embeddings] -> [pgvector / Postgres]
+                                          |
+                                          v
+                                     [Agent via LangGraph]
+                                          |
+                       proposes interview -> DB (status=PENDING)
+                                          |
+                      HR approves -> agent books GCal + sends Gmail
+```
 
-Approval triggers autonomous scheduling and email dispatch.
+---
 
-👨‍💻 Candidate Experience
+## Quickstart (developer)
 
-Endpoint (/my-applications/{email}) lets candidates check their status, scheduled meetings, and links in real-time.
-
-🔁 Feedback Loop
-
-HR can submit feedback (/feedback) on AI scoring, enabling data collection for model improvement.
-
-🧭 System Workflow
-graph TD
-    subgraph "Step 1 & 2: Candidate Applies"
-        A[Candidate applies via React UI]
-        A --> B(FastAPI Backend: Scores Resume & Triggers Agent)
-    end
-
-    subgraph "Step 3: AI Agent (Brain)"
-        B --> C(Agent checks GCal & creates 'Pending' Interview in DB)
-    end
-
-    subgraph "Step 4: Human-in-the-Loop"
-        C --> D[HR Manager approves via Dashboard]
-    end
-
-    subgraph "Step 5: Agent Acts"
-        D --> E(Books Google Calendar event & sends Gmail invite)
-    end
-
-    subgraph "Step 6: Loop Closed"
-        E --> F[Candidate receives email & sees updated status]
-    end
-
-🧱 Tech Stack
-Component	Technology
-Backend	FastAPI, Uvicorn
-AI Orchestration	LangGraph, LangChain
-LLM & Embeddings	Google Gemini (2.5 Flash, text-embedding-004)
-Database	PostgreSQL + pgvector (NeonDB recommended)
-ORM	SQLAlchemy
-Agent Tools	Google Calendar API, Gmail API
-File Parsing	pypdf
-Other	Pydantic, python-multipart
-🚀 Setup & Installation
-1️⃣ Clone the Repository
+```bash
 git clone https://github.com/your-username/your-repo-name.git
 cd your-repo-name
 
-2️⃣ Create a Virtual Environment
-# macOS/Linux
+# venv
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate   # or .\.venv\Scripts\activate (Windows)
 
-# Windows
-python -m venv .venv
-.\.venv\Scripts\activate
-
-3️⃣ Install Dependencies
 pip install -r requirements.txt
+cp .env.example .env        # edit .env
+# put credentials.json (Google OAuth) in project root
+python get_token.py         # authorize once -> token.json
+uvicorn hr_agent.app.main:app --reload --host 127.0.0.1 --port 8000
+```
 
-🗄️ Database Setup (NeonDB + pgvector)
+Docs: `http://127.0.0.1:8000/docs`
 
-Sign up at NeonDB
-.
+---
 
-Create a new PostgreSQL project.
+## Environment Variables (`.env` example)
 
-In SQL Editor, run:
-
-CREATE EXTENSION IF NOT EXISTS vector;
-
-
-Copy your connection string (e.g. postgresql://user:pass@host/dbname).
-
-⚙️ Environment Variables
-
-Create a .env file from .env.example:
-
-DATABASE_URL="postgresql://user:pass@host/dbname"
-GOOGLE_API_KEY="AIza..."  # From Google AI Studio
-
-# Optional: LangSmith tracing
+```env
+DATABASE_URL="postgresql://user:pass@host/dbname"   # Neon / Postgres w/ pgvector
+GOOGLE_API_KEY="AIza..."                            # Gemini / Google AI Studio key
+GOOGLE_OAUTH_CREDENTIALS="credentials.json"         # path if needed elsewhere
+# Optional tracing / debug
 LANGCHAIN_TRACING_V2="true"
 LANGCHAIN_ENDPOINT="https://api.smith.langchain.com"
 LANGCHAIN_API_KEY="lsv2_..."
+```
 
-🔑 Google Authentication (Calendar + Gmail)
-Step 1: Create Google Cloud Project
+**Database:** enable `vector` extension:  
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
 
-Go to Google Cloud Console
-.
+---
 
-Create a new project.
+## Google OAuth (Calendar & Gmail)
 
-Enable:
+1. Google Cloud Console → Create Project  
+2. Enable **Google Calendar API** & **Gmail API**  
+3. OAuth consent: External, add scopes:
+   - `https://www.googleapis.com/auth/calendar`
+   - `https://www.googleapis.com/auth/gmail.send`
+4. Add Test User(s) (your email)
+5. Create OAuth client -> Desktop app -> download `credentials.json`
+6. Run `python get_token.py` → follow prompts; creates `token.json`
 
-Google Calendar API
+---
 
-Gmail API
+## Endpoints — Examples
 
-Step 2: OAuth Consent Screen
+Create job:
+```bash
+curl -X POST "http://127.0.0.1:8000/jobs" -H "Content-Type: application/json" -d '{
+  "title": "Backend Engineer",
+  "description": "2+ years Python, FastAPI, cloud",
+  "location": "Remote"
+}'
+```
 
-Configure as External app.
+Upload candidate resume (triggers scoring & agent if high-fit):
+```bash
+curl -X POST "http://127.0.0.1:8000/jobs/1/candidates"   -F "name=Parv"   -F "email=parv@example.com"   -F "resume=@/path/to/resume.pdf"
+```
 
-Add scopes:
+Get pending interviews (HR):
+```bash
+curl "http://127.0.0.1:8000/pending-interviews"
+```
 
-https://www.googleapis.com/auth/calendar
+Approve a pending interview:
+```bash
+curl -X POST "http://127.0.0.1:8000/pending-interviews/42/approve"
+```
 
-https://www.googleapis.com/auth/gmail.send
+Candidate view:
+```bash
+curl "http://127.0.0.1:8000/my-applications/parv@example.com"
+```
 
-Add your email as a Test User.
+Submit feedback:
+```bash
+curl -X POST "http://127.0.0.1:8000/jobs/1/candidates/1/feedback"   -H "Content-Type: application/json"   -d '{"score": 3, "notes": "Candidate is strong but lacks domain experience."}'
+```
 
-Step 3: Create OAuth Credentials
+---
 
-Go to APIs & Services → Credentials → Create Credentials → OAuth Client ID.
+## Design Notes
 
-Choose Desktop App.
+- **Auth + tokens:** `token.json` created once. Rotate credentials? Re-run `get_token.py`.
+- **Gemini quotas:** Use dev keys for testing.
+- **Vector dimensions:** Match your embedding model; recreate index if model changes.
+- **HITL safety:** Agent never books interviews without approval.
+- **Privacy:** Store minimal resume data; secure DB access.
 
-Download the JSON and rename it to:
+---
 
-credentials.json
+## Roadmap
 
+- ATS Integrations (Greenhouse / Workable)
+- Fine-tuned model from HR feedback
+- Web dashboard for HR
+- Audit logs & explainability
 
-Place it in your project root.
+---
 
-Step 4: Authorize the App
+## License
 
-Run once to generate token.json:
-
-python get_token.py
-
-
-Then:
-
-Log in using your Test User account.
-
-Approve access → Done.
-token.json is now saved locally.
-
-🧩 Running the Server
-uvicorn hr_agent.app.main:app --reload --host 127.0.0.1 --port 8000
-
-
-Your backend will start, auto-create tables, and serve documentation at:
-
-👉 http://127.0.0.1:8000/docs
-
-🔗 API Endpoints Summary
-Endpoint	Method	Description
-/jobs	POST	Create a new job posting
-/jobs/{job_id}/candidates	POST	Upload a candidate resume (triggers AI agent)
-/pending-interviews	GET	Fetch all pending interviews for HR review
-/pending-interviews/{id}/approve	POST	Approve an interview proposal (triggers action)
-/my-applications/{email}	GET	Candidate view: status & meeting info
-/jobs/{job_id}/candidates/{candidate_id}/feedback	POST	Submit HR feedback for learning loop
-🧠 Summary
-
-This project showcases a fully autonomous recruitment workflow integrating:
-
-✅ AI reasoning via LangGraph + Gemini
-✅ Real-world action with Google APIs
-✅ Transparent oversight through Human-in-the-Loop approval
-✅ Continuous improvement via feedback-driven learning
-
-🧩 Future Improvements
-
-Integration with ATS (Greenhouse, Workable, Lever)
-
-Fine-tuning with HR feedback data
-
-Web dashboard for HR and candidate management
-
-Enhanced prompt memory via LangGraph persistence
-
-💡 Author
-
-Parv Agarwal
-AI & DevOps Engineer | Full-Stack Developer
-🔗 LinkedIn
- • GitHub
+MIT — see `LICENSE`.
