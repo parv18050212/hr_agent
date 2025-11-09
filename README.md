@@ -1,4 +1,4 @@
-````markdown
+
 # Autonomous AI Recruitment Manager
 
 This project is a complete, full-stack application demonstrating an **autonomous AI agent** that manages the recruitment pipeline. It's not just a chatbot; it's an agentic system with "eyes," "hands," and a "voice" to perceive events, make decisions, and take real-world actions.
@@ -44,7 +44,7 @@ graph TD
     subgraph "Step 6: Loop Closed"
         E --> F[Candidate: Receives Email & Sees 'Scheduled' Status]
     end
-````
+
 
 ## Tech Stack
 
