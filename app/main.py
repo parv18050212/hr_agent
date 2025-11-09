@@ -4,12 +4,12 @@ from pydantic import EmailStr
 import pypdf
 import io
 from typing import List
-from datetime import datetime, timezone
-
+from datetime import datetime, timezone # <-- This import is used for the fix
+from typing import List, Optional
 # --- Import all project components ---
 from . import crud, models, schemas
 from .database import SessionLocal, engine, get_db, create_db_and_tables
-
+from fastapi.middleware.cors import CORSMiddleware
 # --- Import Agent & Workflows ---
 from .agent import app as agent_app
 from .agent import run_approval_workflow
@@ -23,6 +23,14 @@ app = FastAPI(
     title="AI Recruitment Manager API",
     description="Phase 4: Full Agentic Loop with HITL",
     version="0.4.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins (or specify Lovable domain)
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"],  # Allow all headers
 )
 
 @app.get("/")
@@ -120,12 +128,17 @@ def upload_candidate_resume(
     if db_candidate.fit_score and db_candidate.fit_score >= MIN_FIT_SCORE:
         print(f"Candidate {db_candidate.candidate_id} scored {db_candidate.fit_score}. Triggering agent...")
         
+        # --- START OF FIX ---
+        # Get the current date to "ground" the LLM
+        today_iso = datetime.now(timezone.utc).isoformat()
+        
         # Define the starting "memory" for our agent
         initial_state = {
             "messages": [
                 HumanMessage(
-                    content=f"New high-fit candidate detected: {db_candidate.name}. "  # <--- THIS LINE
+                    content=f"New high-fit candidate detected: {db_candidate.name}. "
                         f"Start the interview proposal workflow. "
+                        f"Today's date is {today_iso}. "  # <-- FIX: Ground the agent
                         f"Search for a 60-minute slot starting from tomorrow."
                 )
             ],
@@ -134,6 +147,7 @@ def upload_candidate_resume(
             "candidate_name": db_candidate.name,
             "candidate_email": db_candidate.email,
         }
+        # --- END OF FIX ---
         
         # Add the agent's run to the background queue
         background_tasks.add_task(agent_app.invoke, initial_state)
@@ -219,6 +233,43 @@ def create_feedback(db: Session, feedback: schemas.FeedbackCreate):
     db.commit()
     db.refresh(db_feedback)
     return db_feedback
+
+
+class ApplicationDetails(schemas.Candidate):
+    job: schemas.Job
+    interview: Optional[schemas.PendingInterview] = None
+
+@app.get("/my-applications/{email}", response_model=List[ApplicationDetails])
+def get_my_applications(email: EmailStr, db: Session = Depends(get_db)):
+    """
+    Get all applications (candidates) submitted by a specific email,
+    and join related job and interview details.
+    """
+    
+    # This query joins all three tables: Candidate, Job, and PendingInterview
+    applications = db.query(models.Candidate, models.Job, models.PendingInterview)\
+        .join(models.Job, models.Candidate.job_id == models.Job.job_id)\
+        .outerjoin(models.PendingInterview, 
+                 models.Candidate.candidate_id == models.PendingInterview.candidate_id)\
+        .filter(models.Candidate.email == email)\
+        .order_by(models.Candidate.created_at.desc())\
+        .all()
+
+    if not applications:
+        return [] # Return empty list, not 404
+    
+    # Format the data into the Pydantic response model
+    results = []
+    for candidate, job, interview in applications:
+        # We need to manually construct the response model
+        app_details_data = candidate.__dict__
+        app_details_data["job"] = job
+        app_details_data["interview"] = interview
+        
+        app_details = ApplicationDetails(**app_details_data)
+        results.append(app_details)
+        
+    return results
 
 @app.post("/jobs/{job_id}/candidates/{candidate_id}/feedback", response_model=schemas.Feedback)
 def submit_feedback(

@@ -59,6 +59,7 @@ class PendingInterview(PendingInterviewBase):
     candidate_id: int
     job_id: int
     status: str
+    meet_link: Optional[str] = None
     created_at: datetime
 
 class FeedbackBase(BaseModel):

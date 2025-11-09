@@ -145,6 +145,15 @@ def update_interview_status(db: Session, interview_id: int, status: str):
         db.refresh(db_interview)
     return db_interview
 
+def update_interview_schedule_details(db: Session, interview_id: int, meet_link: str, status: str = "scheduled"):
+    db_interview = get_pending_interview(db, interview_id)
+    if db_interview:
+        db_interview.status = status
+        db_interview.meet_link = meet_link
+        db.commit()
+        db.refresh(db_interview)
+    return db_interview
+
 def get_candidate(db: Session, candidate_id: int):
     return db.query(models.Candidate).filter(models.Candidate.candidate_id == candidate_id).first()
 

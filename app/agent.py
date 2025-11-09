@@ -8,7 +8,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from datetime import datetime, timedelta # Make sure timedelta is imported
 from pydantic import BaseModel
-
+import textwrap
 # Import our tools and database logic
 from .tools.gmail import SendGmailTool
 from .tools.calendar_tool import CreateCalendarEventTool
@@ -256,19 +256,17 @@ def run_approval_workflow(interview_id: int):
         # Format the time nicely
         interview_time_str = interview.proposed_start_time.strftime('%A, %B %d, %Y at %I:%M %p %Z')
         
-        email_body = f"""
-        Subject: Congratulations! Your Interview is Scheduled.
-
+        email_body = textwrap.dedent(f"""
         Hi {candidate.name},
 
         First of all, congratulations! We were incredibly impressed with your application and resume, and we are excited to invite you to the next step of our interview process.
 
         Your interview has been confirmed for:
 
-        **Date & Time:** {interview_time_str}
+        Date & Time: {interview_time_str}
 
-        **How to join:** A Google Calendar invite has just been sent to you. Please accept it to confirm. The meeting link is also right here for your convenience:
-        **Google Meet Link:** {meet_link}
+        How to join: A Google Calendar invite has just been sent to you. Please accept it to confirm. The meeting link is also right here for your convenience:
+        Google Meet Link: {meet_link}
 
         We're really looking forward to speaking with you and learning more about your projects and experience.
 
@@ -278,19 +276,22 @@ def run_approval_workflow(interview_id: int):
 
         Best regards,
         The Hiring Team
-        """
+        """)
+        
+        # 3. Define the subject line separately
+        email_subject = f"Interview Confirmed: {interview.summary}"
         
         email_result = email_tool.invoke({
             "to": candidate.email,
-            "subject": f"Interview Confirmed: {interview.summary}",
-            "body": email_body
+            "subject": email_subject, # <-- Pass subject here
+            "body": email_body       # <-- Pass clean body here
         })
         # --- END FIX ---
         
         print(f"Candidate Email Result: {email_result}")
 
         # 5. Update the interview status in DB
-        crud.update_interview_status(db, interview_id, "scheduled")
+        crud.update_interview_schedule_details(db, interview_id, meet_link=meet_link)
         print(f"--- Approval Workflow for {interview_id} Complete ---")
         
     except Exception as e:

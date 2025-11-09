@@ -66,7 +66,7 @@ class PendingInterview(Base):
     
     # 'pending', 'approved', 'rejected'
     status = Column(String(50), nullable=False, default='pending') 
-    
+    meet_link = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     candidate = relationship("Candidate")
