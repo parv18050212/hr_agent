@@ -16,12 +16,15 @@ from .tools.calendar_search import FindFreeSlotsTool
 from .config import settings
 from .database import SessionLocal
 from . import crud, schemas
-
+from .tools.exam_tool import GenerateExamTool  # <-- ADD THIS
+import json # <-- Make sure json is imported
+import secrets # <-- ADD THIS
 # 1. Initialize Tools
 tools = [
     SendGmailTool(),
     CreateCalendarEventTool(),
     FindFreeSlotsTool(),
+    GenerateExamTool(),
 ]
 tool_node = ToolNode(tools)
 
@@ -212,7 +215,7 @@ app = graph.compile()
 def run_approval_workflow(interview_id: int):
     """
     This function is triggered by the HR approval endpoint.
-    It books the interview and notifies the candidate.
+    It books the interview, creates the exam link, and notifies the candidate.
     """
     print(f"--- Running Approval Workflow for Interview {interview_id} ---")
     db = SessionLocal()
@@ -236,13 +239,11 @@ def run_approval_workflow(interview_id: int):
             "summary": interview.summary,
             "start_time": interview.proposed_start_time.isoformat(),
             "end_time": interview.proposed_end_time.isoformat(),
-            "attendees": [candidate.email] # You can add hr.manager@example.com here too
+            "attendees": [candidate.email, "hr.manager@example.com"]
         })
         
-        # --- START FIX ---
-        # 3. Parse the tool's JSON result to get the Meet link
         print(f"Calendar Event Result: {result_json}")
-        meet_link = "A Google Meet link will be in the calendar invite." # Default
+        meet_link = "A Google Meet link will be in the calendar invite."
         try:
             event_result = json.loads(result_json)
             if isinstance(event_result, dict) and event_result.get("meet_link"):
@@ -250,48 +251,71 @@ def run_approval_workflow(interview_id: int):
         except Exception as e:
             print(f"Could not parse calendar tool result: {e}")
 
-        # 4. Create the new, empathetic email template
-        email_tool = SendGmailTool()
+        # --- 3. (NEW STEP) Generate and save the Exam ---
+        print("--- Generating custom exam... ---")
+        exam_tool = GenerateExamTool()
+        exam_result_json = exam_tool.invoke({
+            "candidate_id": candidate.candidate_id,
+            "job_id": candidate.job_id
+        })
+        exam_result = json.loads(exam_result_json)
         
-        # Format the time nicely
+        if not exam_result.get("success"):
+            raise Exception(f"Failed to generate exam: {exam_result.get('error')}")
+            
+        exam_id = exam_result.get("exam_id")
+        
+        # --- 4. (NEW STEP) Create the unique exam link for the candidate ---
+        candidate_exam = crud.create_candidate_exam(db, candidate.candidate_id, exam_id)
+        exam_link = f"http://YOUR_FRONTEND_URL/exam/{candidate_exam.access_token}"
+        print(f"--- Exam link created: {exam_link} ---")
+
+
+        # 5. Create the new, upgraded email template
+        email_tool = SendGmailTool()
         interview_time_str = interview.proposed_start_time.strftime('%A, %B %d, %Y at %I:%M %p %Z')
         
-        email_body = textwrap.dedent(f"""
+        email_body = f"""
+        Subject: Congratulations! Your Interview is Scheduled.
+
         Hi {candidate.name},
 
-        First of all, congratulations! We were incredibly impressed with your application and resume, and we are excited to invite you to the next step of our interview process.
+        We were impressed with your application and are excited to invite you to the next step!
 
         Your interview has been confirmed for:
+        **Date & Time:** {interview_time_str}
 
-        Date & Time: {interview_time_str}
+        **Google Meet Link:** {meet_link}
+        (A Google Calendar invite has also been sent to you. Please accept it.)
 
-        How to join: A Google Calendar invite has just been sent to you. Please accept it to confirm. The meeting link is also right here for your convenience:
-        Google Meet Link: {meet_link}
+        ---
+        
+        **Technical Assessment:**
+        As the next step, please complete our brief technical assessment. This helps us understand your skills better before our conversation.
+        
+        **Please use this unique, one-time-use link to access your exam:**
+        {exam_link}
 
-        We're really looking forward to speaking with you and learning more about your projects and experience.
+        Please try to complete this at least 24 hours before our scheduled interview.
 
-        If you have any questions or need to reschedule (please let us know at least 24 hours in advance), just reply to this email.
+        ---
 
-        Best of luck!
-
+        We're looking forward to speaking with you.
+        
         Best regards,
         The Hiring Team
-        """)
-        
-        # 3. Define the subject line separately
-        email_subject = f"Interview Confirmed: {interview.summary}"
+        """
         
         email_result = email_tool.invoke({
             "to": candidate.email,
-            "subject": email_subject, # <-- Pass subject here
-            "body": email_body       # <-- Pass clean body here
+            "subject": f"Interview Confirmed: {interview.summary}",
+            "body": email_body
         })
-        # --- END FIX ---
         
         print(f"Candidate Email Result: {email_result}")
 
-        # 5. Update the interview status in DB
-        crud.update_interview_schedule_details(db, interview_id, meet_link=meet_link)
+        # 6. Update the interview status in DB
+        crud.update_interview_status(db, interview_id, "scheduled")
         print(f"--- Approval Workflow for {interview_id} Complete ---")
         
     except Exception as e:
@@ -299,5 +323,4 @@ def run_approval_workflow(interview_id: int):
         crud.update_interview_status(db, interview_id, "error")
     finally:
         db.close()
-
 print("--- LangGraph agent compiled successfully ---")

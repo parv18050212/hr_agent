@@ -4,10 +4,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
-from pgvector.sqlalchemy import Vector # <-- ADD THIS
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Numeric, func
-from sqlalchemy.orm import relationship
-# Create a new Base here for models
+from pgvector.sqlalchemy import Vector
+
 Base = declarative_base()
 
 class Job(Base):
@@ -17,11 +15,12 @@ class Job(Base):
     title = Column(String(255), nullable=False)
     description_text = Column(Text, nullable=False)
     requirements_structured = Column(JSON) 
-    embedding = Column(Vector(768))  # <-- UPDATED to 768
+    embedding = Column(Vector(768))
     status = Column(String(50), nullable=False, default='open') 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     candidates = relationship("Candidate", back_populates="job")
+    exams = relationship("Exam", back_populates="job") # <-- THIS IS THE MISSING LINE
 
 class Candidate(Base):
     __tablename__ = "candidates"
@@ -32,12 +31,20 @@ class Candidate(Base):
     email = Column(String(255), nullable=False, index=True)
     resume_raw_text = Column(Text) 
     skills_parsed = Column(JSON) 
-    embedding = Column(Vector(768))  # <-- UPDATED to 768
-    fit_score = Column(Numeric(5, 4)) 
+    embedding = Column(Vector(768))
+    fit_score = Column(Numeric(5, 4))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    deep_analysis_status = Column(String(50), default='pending')
+    detailed_score = Column(String(10))
+    detailed_validation = Column(Text)
+    detailed_recommendation = Column(Text)
     
     job = relationship("Job", back_populates="candidates")
     logs = relationship("AuditLog", back_populates="candidate")
+    feedback = relationship("Feedback", back_populates="candidate")
+    pending_interviews = relationship("PendingInterview", back_populates="candidate")
+    candidate_exams = relationship("CandidateExam", back_populates="candidate") # <-- THIS IS THE MISSING LINE
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
@@ -58,18 +65,13 @@ class PendingInterview(Base):
     interview_id = Column(Integer, primary_key=True)
     candidate_id = Column(Integer, ForeignKey("candidates.candidate_id"), index=True)
     job_id = Column(Integer, ForeignKey("jobs.job_id"), index=True)
-    
-    # The data the agent proposes
     summary = Column(String(255), nullable=False)
     proposed_start_time = Column(DateTime(timezone=True), nullable=False)
     proposed_end_time = Column(DateTime(timezone=True), nullable=False)
-    
-    # 'pending', 'approved', 'rejected'
     status = Column(String(50), nullable=False, default='pending') 
-    meet_link = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    candidate = relationship("Candidate")
+    candidate = relationship("Candidate", back_populates="pending_interviews")
     job = relationship("Job")
 
 class Feedback(Base):
@@ -78,17 +80,39 @@ class Feedback(Base):
     feedback_id = Column(Integer, primary_key=True)
     job_id = Column(Integer, ForeignKey("jobs.job_id"), index=True)
     candidate_id = Column(Integer, ForeignKey("candidates.candidate_id"), index=True)
-    
-    # The score the agent gave
     agent_score = Column(Numeric(5, 4))
-    
-    # HR's decision, e.g., "Approved" (agreed) or "Rejected" (disagreed)
     hr_decision = Column(String(50), nullable=False)
-    
-    # The "why" from HR
     hr_comments = Column(Text)
-    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    candidate = relationship("Candidate")
+    candidate = relationship("Candidate", back_populates="feedback")
     job = relationship("Job")
+
+# --- NEW TABLES FOR EXAM PLATFORM ---
+
+class Exam(Base):
+    """Stores the master copy of the exam generated for a job."""
+    __tablename__ = "exams"
+    exam_id = Column(Integer, primary_key=True)
+    job_id = Column(Integer, ForeignKey("jobs.job_id"), index=True)
+    questions = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    job = relationship("Job", back_populates="exams")
+    candidate_exams = relationship("CandidateExam", back_populates="exam") # <-- THIS IS THE MISSING LINE
+
+class CandidateExam(Base):
+    """Links a candidate to a specific exam instance."""
+    __tablename__ = "candidate_exams"
+    candidate_exam_id = Column(Integer, primary_key=True)
+    candidate_id = Column(Integer, ForeignKey("candidates.candidate_id"), index=True)
+    exam_id = Column(Integer, ForeignKey("exams.exam_id"), index=True)
+    
+    access_token = Column(String(255), unique=True, index=True, nullable=False)
+    status = Column(String(50), default='pending')
+    answers = Column(JSON)
+    submitted_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    candidate = relationship("Candidate", back_populates="candidate_exams")
+    exam = relationship("Exam", back_populates="candidate_exams") # <-- THIS IS THE FIX
