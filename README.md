@@ -1,168 +1,208 @@
-# 🚀 Autonomous AI Recruitment Manager
+# 🚀 Autonomous AI Recruitment Manager — Backend (FastAPI + LangGraph + Gemini)
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-000000?style=flat&logo=fastapi)](https://fastapi.tiangolo.com) [![LangChain](https://img.shields.io/badge/LangChain-000000?style=flat)](https://langchain.com) [![Gemini](https://img.shields.io/badge/Gemini-000000?style=flat)](https://ai.google/) [![Postgres](https://img.shields.io/badge/Postgres-336791?style=flat&logo=postgresql)]
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi)](https://fastapi.tiangolo.com)  
+[![LangChain](https://img.shields.io/badge/LangGraph%2FLangChain-000000?style=flat)](https://langchain.com)  
+[![Gemini](https://img.shields.io/badge/Google%20Gemini-4285F4?style=flat&logo=google)](https://ai.google/)  
+[![Postgres](https://img.shields.io/badge/Postgres%20%2B%20pgvector-336791?style=flat&logo=postgresql)](https://www.postgresql.org)  
 
-> **Autonomous pipeline** that scores resumes semantically, proposes interviews, flows through HR approval, then autonomously books Google Calendar events and emails candidates. Human-in-the-loop for safe, auditable automation.
+> **Autonomous backend system** that semantically evaluates resumes, identifies top candidates, proposes interviews, sends them for HR approval, and—only after approval—automatically schedules Google Calendar meetings and emails candidates.
 
----
-
-## TL;DR
-
-1. Clone repo  
-2. Create `.env` from `.env.example` and populate keys (DATABASE_URL, GOOGLE_API_KEY, Google OAuth `credentials.json`)  
-3. `pip install -r requirements.txt`  
-4. `python get_token.py` → authorize once (creates `token.json`)  
-5. `uvicorn hr_agent.app.main:app --reload` → open `http://127.0.0.1:8000/docs`  
+This backend powers the full product.  
+**Frontend repo:** https://github.com/parv18050212/ai-recruiter-app
 
 ---
 
-## What this does (short)
-
-- Ingests PDF resumes and scores them against job descriptions using **Gemini** embeddings + **pgvector**.
-- Triggers a LangGraph/LangChain agent for high-fit candidates.
-- Agent proposes an interview (creates `Pending` interview in DB).
-- HR approves via `/pending-interviews/{id}/approve` — only then agent books GCal & sends Gmail.
-- Candidate-facing endpoint `/my-applications/{email}` shows status + meet link.
-- HR feedback endpoint to capture labeling data for future improvements.
-
----
-
-## Quick Features
-
-- Semantic resume scoring (Gemini + pgvector)
-- LangGraph agent orchestration
-- Google Calendar & Gmail integration (real bookings & invites)
-- Human-in-the-loop safety gate
-- Candidate self-service endpoint
-- Feedback loop for continuous learning
-
----
-
-## Architecture (at-a-glance)
-
-```
-[React UI] -> [FastAPI] -> [Resume Parser + Embeddings] -> [pgvector / Postgres]
-                                          |
-                                          v
-                                     [Agent via LangGraph]
-                                          |
-                       proposes interview -> DB (status=PENDING)
-                                          |
-                      HR approves -> agent books GCal + sends Gmail
-```
-
----
-
-## Quickstart (developer)
+# 📌 TL;DR — Run in 30 seconds
 
 ```bash
-git clone https://github.com/your-username/your-repo-name.git
-cd your-repo-name
+git clone https://github.com/parv18050212/hr_agent
+cd hr_agent
 
-# venv
 python3 -m venv .venv
-source .venv/bin/activate   # or .\.venv\Scripts\activate (Windows)
+source .venv/bin/activate  # Windows: .\.venv\Scripts\activate
 
 pip install -r requirements.txt
-cp .env.example .env        # edit .env
-# put credentials.json (Google OAuth) in project root
-python get_token.py         # authorize once -> token.json
-uvicorn hr_agent.app.main:app --reload --host 127.0.0.1 --port 8000
+cp .env.example .env       # Add DATABASE_URL, keys, etc.
+
+# Add Google OAuth credentials.json in root
+python get_token.py        # Creates token.json after browser auth
+
+uvicorn hr_agent.app.main:app --reload
 ```
 
-Docs: `http://127.0.0.1:8000/docs`
+Open → **http://127.0.0.1:8000/docs**
 
 ---
 
-## Environment Variables (`.env` example)
+# 🎯 What This Backend Does
 
-```env
-DATABASE_URL="postgresql://user:pass@host/dbname"   # Neon / Postgres w/ pgvector
-GOOGLE_API_KEY="AIza..."                            # Gemini / Google AI Studio key
-GOOGLE_OAUTH_CREDENTIALS="credentials.json"         # path if needed elsewhere
-# Optional tracing / debug
-LANGCHAIN_TRACING_V2="true"
-LANGCHAIN_ENDPOINT="https://api.smith.langchain.com"
-LANGCHAIN_API_KEY="lsv2_..."
+### **1. Resume Understanding**
+- Upload PDF
+- Text extracted + embedded using **Google Gemini**
+- Stored inside Postgres **pgvector**
+- Compared against job vectors → similarity score
+
+### **2. AI-Driven Candidate Ranking**
+- LangGraph pipeline interprets candidate-job match
+- If strong match → create `PENDING` interview record
+
+### **3. Human‑in‑the‑Loop Safety**
+Agent cannot book interviews automatically.  
+HR must **approve** via `/pending-interviews/{id}/approve`.
+
+### **4. Autonomous Interview Booking**
+After approval:
+- Google Calendar booking
+- Meet link creation
+- Automated Gmail email to candidate
+
+### **5. Candidate Portal**
+```
+/my-applications/{email}
 ```
 
-**Database:** enable `vector` extension:  
+### **6. Feedback Loop**
+HR feedback stored for future model improvements.
+
+---
+
+# 🧠 System Architecture
+
+```
+              ┌───────────────────────────────┐
+              │           React UI             │
+              │ (candidate + HR dashboards)    │
+              └──────────────┬────────────────┘
+                             │
+                             ▼
+                   ┌───────────────────┐
+                   │     FastAPI       │
+                   │ REST + Handlers   │
+                   └───────┬───────────┘
+                           │
+     ┌─────────────────────┼─────────────────────┐
+     ▼                     ▼                     ▼
+[Resume Parser]   [Gemini Embeddings]   [LangGraph Agent]
+ Extract text      Store vectors in     Decide fit → propose
+ in Python         Postgres(pgvector)   interview
+
+                   ┌───────────────────┐
+                   │  HR Approval UI   │
+                   └─────────┬─────────┘
+                             ▼
+                   [Google Calendar API]
+                   [Gmail Automated Emails]
+```
+
+---
+
+# 🛠️ Tech Stack
+
+### **Core**
+- **FastAPI** (REST API)
+- **LangChain + LangGraph** (agent workflow)
+- **Gemini Embeddings**
+- **PostgreSQL + pgvector**
+- **Google Calendar API**
+- **Gmail API**
+
+### **Utilities**
+- Python 3.10+
+- Uvicorn
+- Pydantic
+- SQLAlchemy
+
+---
+
+# ⚙️ Setup / Environment Variables
+
+`.env.example` includes:
+
+```env
+DATABASE_URL="postgresql://user:pass@host/db"
+GOOGLE_API_KEY="AIza..."
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_ENDPOINT="https://api.smith.langchain.com"
+LANGCHAIN_API_KEY="lsv2_..."
+
+GOOGLE_OAUTH_CREDENTIALS="credentials.json"
+```
+
+### Enable pgvector extension
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
 ---
 
-## Google OAuth (Calendar & Gmail)
+# 🔑 Google OAuth Setup
 
+### Steps
 1. Google Cloud Console → Create Project  
-2. Enable **Google Calendar API** & **Gmail API**  
-3. OAuth consent: External, add scopes:
-   - `https://www.googleapis.com/auth/calendar`
-   - `https://www.googleapis.com/auth/gmail.send`
-4. Add Test User(s) (your email)
-5. Create OAuth client -> Desktop app -> download `credentials.json`
-6. Run `python get_token.py` → follow prompts; creates `token.json`
+2. Enable:
+   - **Google Calendar API**
+   - **Gmail API**
+3. OAuth → External → Add test users  
+4. Create Desktop OAuth Client → download **credentials.json**  
+5. Place file in project root  
+6. Run:
+```bash
+python get_token.py
+```
+
+Generates `token.json`.
 
 ---
 
-## Endpoints — Examples
+# 📡 API Examples
 
-Create job:
+### Create Job
 ```bash
-curl -X POST "http://127.0.0.1:8000/jobs" -H "Content-Type: application/json" -d '{
-  "title": "Backend Engineer",
-  "description": "2+ years Python, FastAPI, cloud",
-  "location": "Remote"
-}'
+curl -X POST "http://127.0.0.1:8000/jobs" -H "Content-Type: application/json" -d '{"title":"Backend Engineer","description":"Python + FastAPI","location":"Remote"}'
 ```
 
-Upload candidate resume (triggers scoring & agent if high-fit):
+### Upload Resume
 ```bash
-curl -X POST "http://127.0.0.1:8000/jobs/1/candidates"   -F "name=Parv"   -F "email=parv@example.com"   -F "resume=@/path/to/resume.pdf"
+curl -X POST "http://127.0.0.1:8000/jobs/1/candidates" -F "name=Parv" -F "email=parv@example.com" -F "resume=@/path/resume.pdf"
 ```
 
-Get pending interviews (HR):
+### Get Pending Interviews
 ```bash
-curl "http://127.0.0.1:8000/pending-interviews"
+curl http://127.0.0.1:8000/pending-interviews
 ```
 
-Approve a pending interview:
+### Approve Interview
 ```bash
-curl -X POST "http://127.0.0.1:8000/pending-interviews/42/approve"
+curl -X POST http://127.0.0.1:8000/pending-interviews/42/approve
 ```
 
-Candidate view:
+### Candidate View
 ```bash
-curl "http://127.0.0.1:8000/my-applications/parv@example.com"
-```
-
-Submit feedback:
-```bash
-curl -X POST "http://127.0.0.1:8000/jobs/1/candidates/1/feedback"   -H "Content-Type: application/json"   -d '{"score": 3, "notes": "Candidate is strong but lacks domain experience."}'
+curl http://127.0.0.1:8000/my-applications/parv@example.com
 ```
 
 ---
 
-## Design Notes
+# 🧩 Design Notes
 
-- **Auth + tokens:** `token.json` created once. Rotate credentials? Re-run `get_token.py`.
-- **Gemini quotas:** Use dev keys for testing.
-- **Vector dimensions:** Match your embedding model; recreate index if model changes.
-- **HITL safety:** Agent never books interviews without approval.
-- **Privacy:** Store minimal resume data; secure DB access.
-
----
-
-## Roadmap
-
-- ATS Integrations (Greenhouse / Workable)
-- Fine-tuned model from HR feedback
-- Web dashboard for HR
-- Audit logs & explainability
+- **Agent never books without HR approval**
+- **Google token.json required only once**
+- **Vector dims depend on embedding model**
+- **Minimal PII stored**
+- **Embeddings cached where possible**
 
 ---
 
-## License
+# 📅 Roadmap
 
-MIT — see `LICENSE`.
+- ATS integrations (Greenhouse / Lever)
+- Better UI for HR review
+- Full audit logging
+- Explainability layer for ranking
+- Multi-round interview planning
+
+---
+
+# 📄 License
+MIT License.  
+Feel free to fork, extend, or deploy.
